@@ -1,8 +1,13 @@
 language: android 
-sudo: true
+sudo: false
+addons:
+  apt:
+    packages:
+      - imagemagick
 jdk:
 - oraclejdk8
 android:
+  update_sdk: true
   components:
   - platform-tools
   - tools
@@ -10,57 +15,84 @@ android:
   - android-26
   - extra-google-m2repository
   - extra-android-m2repository
-  - extra-android-support
+licenses:
+  - 'android-sdk-preview-license-52d11cd2'
+  - 'android-sdk-preview-license-.+'
+  - 'android-sdk-license-.+'
+  - 'google-gdk-license-.+'
+  - 'extra-android-support-.+'
+cache:
+  directories:
+    - $HOME/.gradle
+    - $HOME/.android
+    - $ANDROID_HOME
+before_cache:
+  - find $HOME/.gradle -name *.lock -print | xargs -I {} -P 4 rm -rf {}
+  - find $HOME/.android -name *.lock -print | xargs -I {} -P 4 rm -rf {}
+
+env:
+- QUALITY=50
+
 before_install:
-- echo -e "y" > accepting
-- sdkmanager --update < accepting
+- cp -rf tools/licenses $ANDROID_HOME
 
 - curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://dl.google.com/android/repository/android-ndk-r15b-linux-x86_64.zip
 - unzip -q android-ndk-r15b-linux-x86_64.zip
 
-- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/purerosefallen/ygopro-222DIY/archive/master.zip
-- unzip -q ygopro-222DIY-master.zip
-- cp -rf ygopro-222DIY-master/expansions mobile/assets/data
-- cp -rf ygopro-222DIY-master/ocgcore Classes
-- cp -rf ygopro-222DIY-master/lflist.conf mobile/assets/data/conf
+- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/purerosefallen/ygopro-222DIY/archive/local.zip
+- unzip -q ygopro-222DIY-local.zip
+- cp -rf ygopro-222DIY-local/ocgcore Classes
 
-- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/purerosefallen/ygopro-7210srv/archive/master.zip
-- unzip -q ygopro-7210srv-master.zip
-- cp -rf ygopro-7210srv-master/expansions mobile/assets/data
-- cp -rf ygopro-7210srv-master/strings.conf mobile/assets/data/conf
-- cp -rf ygopro-7210srv-master/cards.cdb mobile/assets/data
-
-- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/Smile-DK/ygopro-scripts/archive/master.zip
+- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/Fluorohydride/ygopro-scripts/archive/master.zip
 - unzip -q ygopro-scripts-master.zip
-- mv ygopro-scripts-master mobile/assets/data/script
+- mv -f ygopro-scripts-master script
+
+- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/HuangYuNan/ygopro222-images/archive/master.zip
+- unzip -q ygopro222-images-master.zip
+- mv -f ygopro222-images-master pics
+
+
+- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/purerosefallen/ygopro-7210srv/raw/master/strings.conf
+- mv -f strings.conf mobile/assets/data/conf
+
+- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/purerosefallen/ygopro-7210srv/raw/master/cards.cdb
+- mv -f cards.cdb mobile/assets/data
+
+- mkdir mobile/assets/data/expansions
+
+- curl --retry 5 --connect-timeout 30 --location --remote-header-name --remote-name https://github.com/purerosefallen/ygopro-222DIY/archive/data.zip
+- unzip -q ygopro-222DIY-data.zip
+- cp -rf ygopro-222DIY-data/expansions/pics .
+- cp -rf ygopro-222DIY-data/expansions/script .
+- cp -rf ygopro-222DIY-data/expansions/*.cdb mobile/assets/data/expansions
+- cp -rf ygopro-222DIY-data/expansions/strings.conf mobile/assets/data/expansions
+- cp -rf ygopro-222DIY-data/lflist.conf mobile/assets/data/conf
+
+- rm -rf pics/thumbnail
+- rm -rf pics/*.db
+- cd pics && ls *.jpg | xargs -I {} -P 4 convert -size 177x254! -quality $QUALITY {} {} && cd ..
+
+- zip -q -r mobile/assets/data/pics.zip pics
+- zip -q -r mobile/assets/data/scripts.zip script
 
 - cp -rf tools/Application.mk libcore/jni
-- cp -rf tools/ic_icon.png mobile/src/main/res/drawable
-
-- cd libcore
-- ./../android-ndk-r15b/ndk-build -j4
-- cd ..
+- cp -rf tools/*.png mobile/src/main/res/drawable
 
 - chmod 777 ./gradlew
 
 script:
-- ./gradlew :libcore:assembleRelease :mobile:assembleCoreRelease :mobile:assembleMycardRelease
+- cd libcore && ./../android-ndk-r15b/ndk-build -j8 && cd ..
+- ./gradlew :libcore:assembleRelease :mobile:assembleMycardRelease
 
-- git config --global user.name "Smile-DK"
-- git config --global user.email "2236141431@qq.com"
-- git clone https://github.com/Smile-DK/ygopro-svrelease
-- cd ygopro-svrelease
-- rm -rf mobile
-- mkdir mobile
-- cp -rf ../mobile/build/outputs/apk/*.apk mobile
+before_deploy:
+  - mkdir op
+  - mv -f mobile/build/outputs/apk/mobile-mycard-armeabi-v7a-release.apk op/ygomobile-$TRAVIS_BRANCH-$TRAVIS_BUILD_NUMBER.apk
 
-- git add . -A
-- git commit -m "YGOMobile Build by Travis"
-- git push $SMILE/Smile-DK/ygopro-svrelease master
-
-- cd ..
-
-branches:
-  only:
-  - master
-  - /\d+\..+/
+deploy:
+  provider: releases
+  api-key: $NANAHIRA
+  file_glob: true
+  file: op/*.apk
+  skip_cleanup: true
+  on:
+    branch: master
